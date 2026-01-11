@@ -1,0 +1,369 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id          String        @id @default(cuid()) @map("id")
+  username    String        @unique @db.VarChar(255) @map("username")
+  email       String        @unique @db.VarChar(255) @map("email")
+  password    String        @db.Text @map("password")
+  role        Role          @default(CUSTOMER) @map("role")
+  name        String?       @db.VarChar(255) @map("name")
+  avatar      String?       @db.Text     @map("avatar")
+  phone       String?       @db.VarChar(32) @map("phone")
+  points      Int           @default(0) @map("points")
+  level       Int           @default(1) @map("level")
+  badge       String        @default("New Light") @db.VarChar(255) @map("badge")
+  isVerified  Boolean       @default(false) @map("is_verified")
+  lastLoginAt DateTime?     @map("last_login_at") @db.Timestamp() // Last successful login
+  deletedAt   DateTime?     @map("deleted_at") @db.Timestamp() // Soft delete
+  createdBy   String?       @map("created_by") // User ID who created this account (admin registration)
+  updatedBy   String?       @map("updated_by") // User ID who last updated this account
+  createdAt   DateTime      @default(now()) @map("created_at") @db.Timestamp()
+  updatedAt   DateTime      @updatedAt @map("updated_at") @db.Timestamp()
+
+  activityLogs ActivityLog[] @relation("UserActivityLogs")
+  blogs        Blog[]        @relation("UserBlogs")
+  accounts     Account[]     @relation("UserAccounts")
+  sessions     Session[]     @relation("UserSessions")
+  lessonProgress UserLessonProgress[] @relation("UserLessonProgress")
+  orders       Order[]       @relation("UserOrders")
+
+  @@unique([email, deletedAt]) // Allow email reuse after soft delete
+  @@unique([username, deletedAt]) // Allow username reuse after soft delete
+  @@index([email])
+  @@index([username])
+  @@index([role])
+  @@index([createdAt])
+  @@index([deletedAt]) // For filtering active users
+  @@index([points]) // For leaderboards
+  @@index([lastLoginAt]) // For last login tracking
+  @@index([email, deletedAt]) // Composite: auth lookups
+  @@index([role, createdAt]) // Composite: user analytics
+  @@map("users")
+}
+
+model Product {
+  id          String   @id @default(cuid()) @map("id")
+  name        String   @db.VarChar(255) @map("name")
+  slug        String   @unique @db.VarChar(255) @map("slug") // For URLs
+  description String?  @db.Text @map("description")
+  price       Int      @map("price") // Price in cents
+  sku         String?  @unique @db.VarChar(100) @map("sku") // Stock keeping unit
+  stock       Int      @default(0) @map("stock") // Quantity available
+  status      ProductStatus @default(ACTIVE) @map("status") // ACTIVE, INACTIVE, DISCONTINUED
+  imageUrl    String?  @db.Text @map("image_url") // Primary image
+  deletedAt   DateTime?     @map("deleted_at") @db.Timestamp() // Soft delete
+  createdBy   String?       @map("created_by") // User ID who created this product
+  updatedBy   String?       @map("updated_by") // User ID who last updated this product
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamp()
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamp()
+
+  images      ProductImage[]  @relation("ProductImages")
+  orderItems  OrderItem[]     @relation("ProductOrderItems")
+
+  @@unique([slug, deletedAt]) // Allow slug reuse after soft delete
+  @@unique([sku, deletedAt]) // Allow SKU reuse after soft delete
+  @@index([name])
+  @@index([slug])
+  @@index([status])
+  @@index([createdAt])
+  @@index([stock]) // For low stock alerts
+  @@index([deletedAt]) // For filtering active products
+  @@index([status, stock]) // Composite: inventory queries
+  @@index([status, createdAt]) // Composite: product listings
+  @@map("products")
+}
+
+model ProductImage {
+  id        String   @id @default(cuid()) @map("id")
+  productId String   @map("product_id")
+  url       String   @db.Text @map("url")
+  alt       String?  @db.VarChar(255) @map("alt")
+  order     Int      @default(0) @map("order") // Display order
+  deletedAt DateTime?     @map("deleted_at") @db.Timestamp() // Soft delete
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamp()
+
+  product   Product  @relation("ProductImages", fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+  @@index([deletedAt]) // For filtering active images
+  @@map("product_images")
+}
+
+model Order {
+  id              String        @id @default(cuid()) @map("id")
+  userId          String        @map("user_id")
+  status          OrderStatus   @default(PENDING) @map("status") // PENDING, PAID, SHIPPED, DELIVERED, CANCELLED
+  totalAmount     Int           @map("total_amount") // Total in cents
+  paymentStatus   PaymentStatus @default(UNPAID) @map("payment_status") // UNPAID, PAID, REFUNDED
+  paymentMethod   String?       @db.VarChar(50) @map("payment_method") // stripe, paypal, etc.
+  paymentId       String?       @db.VarChar(255) @map("payment_id") // External payment provider ID
+  stripeSessionId String?       @unique @db.VarChar(255) @map("stripe_session_id") // Stripe checkout session
+  deletedAt       DateTime?     @map("deleted_at") @db.Timestamp() // Soft delete
+  
+  // Shipping info
+  shippingAddress String?       @db.Text @map("shipping_address") // JSON or text
+  shippingStatus  String?       @db.VarChar(50) @map("shipping_status") // pending, shipped, delivered
+  trackingNumber  String?       @db.VarChar(100) @map("tracking_number")
+  
+  // Timestamps
+  createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamp()
+  updatedAt       DateTime      @updatedAt @map("updated_at") @db.Timestamp()
+  paidAt          DateTime?     @map("paid_at") @db.Timestamp()
+  shippedAt       DateTime?     @map("shipped_at") @db.Timestamp()
+  deliveredAt     DateTime?     @map("delivered_at") @db.Timestamp()
+  createdBy       String?       @map("created_by") // User ID who created this order
+  updatedBy       String?       @map("updated_by") // User ID who last updated this order
+
+  user      User        @relation("UserOrders", fields: [userId], references: [id], onDelete: Cascade)
+  items     OrderItem[] @relation("OrderItems")
+
+  @@index([userId])
+  @@index([status])
+  @@index([paymentStatus])
+  @@index([createdAt])
+  @@index([paymentId])
+  @@index([deletedAt]) // For filtering active orders
+  @@index([userId, status]) // Composite: user order history
+  @@index([status, createdAt]) // Composite: order reporting
+  @@index([paymentStatus, createdAt]) // Composite: payment reconciliation
+  @@map("orders")
+}
+
+model OrderItem {
+  id              String   @id @default(cuid()) @map("id")
+  orderId         String   @map("order_id")
+  productId       String   @map("product_id")
+  quantity        Int      @map("quantity")
+  priceSnapshot   Int      @map("price_snapshot") // Price in cents at time of order
+  subtotal        Int      @map("subtotal") // quantity * priceSnapshot
+  deletedAt       DateTime?     @map("deleted_at") @db.Timestamp() // Soft delete
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamp()
+
+  order     Order   @relation("OrderItems", fields: [orderId], references: [id], onDelete: Cascade)
+  product   Product @relation("ProductOrderItems", fields: [productId], references: [id], onDelete: Restrict)
+
+  @@index([orderId])
+  @@index([productId])
+  @@index([deletedAt]) // For filtering active items
+  @@map("order_items")
+}
+
+model Course {
+  id          String   @id @default(cuid()) @map("id")
+  title       String   @db.VarChar(255) @map("title")
+  description String?  @db.Text @map("description")
+  content     String?  @db.Text @map("content")
+  price       Int?     @map("price") // Price in cents; null = free, otherwise price in cents
+  isPaid      Boolean  @default(false) @map("is_paid")
+  imageUrl    String?  @db.Text @map("image_url")
+  deletedAt   DateTime?     @map("deleted_at") @db.Timestamp() // Soft delete
+  createdBy   String?       @map("created_by") // User ID who created this course
+  updatedBy   String?       @map("updated_by") // User ID who last updated this course
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamp()
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamp()
+
+  lessons              Lesson[]              @relation("CourseLessons")
+  userProgressRecords UserLessonProgress[]  @relation("CourseProgress")
+
+  @@index([title])
+  @@index([createdAt])
+  @@index([isPaid])
+  @@index([deletedAt]) // For filtering active courses
+  @@index([isPaid, createdAt]) // Composite: course listings by type
+  @@map("courses")
+}
+
+model Lesson {
+  id          String   @id @default(cuid()) @map("id")
+  courseId    String   @map("course_id")
+  title       String   @db.VarChar(255) @map("title")
+  description String?  @db.Text @map("description")
+  content     String?  @db.Text @map("content")
+  videoUrl    String?  @db.Text @map("video_url")
+  order       Int      @map("order") // Position in course sequence
+  duration    Int?     @map("duration") // Duration in seconds
+  deletedAt   DateTime?     @map("deleted_at") @db.Timestamp() // Soft delete
+  createdBy   String?       @map("created_by") // User ID who created this lesson
+  updatedBy   String?       @map("updated_by") // User ID who last updated this lesson
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamp()
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamp()
+
+  course                Course                @relation("CourseLessons", fields: [courseId], references: [id], onDelete: Cascade)
+  userProgressRecords   UserLessonProgress[]  @relation("LessonProgress")
+
+  @@unique([courseId, order, deletedAt]) // Allow order reuse after soft delete
+  @@index([courseId])
+  @@index([createdAt])
+  @@index([deletedAt]) // For filtering active lessons
+  @@index([courseId, order]) // Composite: course lesson sequences
+  @@map("lessons")
+}
+
+model UserLessonProgress {
+  id           String   @id @default(cuid()) @map("id")
+  userId       String   @map("user_id")
+  courseId     String   @map("course_id")
+  lessonId     String   @map("lesson_id")
+  completed    Boolean  @default(false) @map("completed")
+  completedAt  DateTime? @map("completed_at") @db.Timestamp()
+  watchedMinutes Int    @default(0) @map("watched_minutes") // Minutes watched
+  deletedAt    DateTime?     @map("deleted_at") @db.Timestamp() // Soft delete
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamp()
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamp()
+
+  user    User    @relation("UserLessonProgress", fields: [userId], references: [id], onDelete: Cascade)
+  course  Course  @relation("CourseProgress", fields: [courseId], references: [id], onDelete: Cascade)
+  lesson  Lesson  @relation("LessonProgress", fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, lessonId, deletedAt]) // Allow reuse after soft delete
+  @@index([userId])
+  @@index([courseId])
+  @@index([lessonId])
+  @@index([completed])
+  @@index([deletedAt]) // For filtering active progress
+  @@map("user_lesson_progress")
+}
+
+model ActivityLog {
+  id           String   @id @map("id")
+  userId       String   @map("user_id")
+  action       String   @db.VarChar(255) @map("action")
+  route        String?  @db.VarChar(255) @map("route") // Route attempted (for denied access logs)
+  reason       String?  @db.Text @map("reason") // Why action was denied/allowed
+  userRole     String?  @db.VarChar(50) @map("user_role") // User's role at time of action
+  pointsEarned Int      @default(0) @map("points_earned")
+  createdBy    String?  @map("created_by") // User ID who triggered this action (typically same as userId)
+  deletedAt    DateTime?     @map("deleted_at") @db.Timestamp() // Soft delete
+  timestamp    DateTime @default(now()) @map("timestamp") @db.Timestamp()
+
+  user         User     @relation("UserActivityLogs", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([timestamp])
+  @@index([action])
+  @@index([deletedAt]) // For filtering active logs
+  @@index([userId, timestamp]) // Composite: user activity timeline
+  @@index([action, timestamp]) // Composite: action analytics
+  @@index([route]) // For tracking route access attempts
+  @@index([userRole]) // For analyzing denied access by role
+  @@map("activity_logs")
+}
+
+model Blog {
+  id        String   @id @map("id")
+  title     String   @db.VarChar(255) @map("title")
+  content   String   @db.Text @map("content")
+  authorId  String?  @map("author_id")
+  deletedAt DateTime?     @map("deleted_at") @db.Timestamp() // Soft delete
+  createdBy String?       @map("created_by") // User ID who created this blog post
+  updatedBy String?       @map("updated_by") // User ID who last updated this blog post
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamp()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamp()
+
+  author    User?    @relation("UserBlogs", fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([authorId])
+  @@index([createdAt])
+  @@index([deletedAt]) // For filtering active posts
+  @@index([authorId, createdAt]) // Composite: author posts timeline
+  @@map("blogs")
+}
+
+model PointsRule {
+  id        String @id @map("id")
+  action    String @unique @db.VarChar(255) @map("action")
+  points    Int    @map("points")
+  deletedAt DateTime?     @map("deleted_at") @db.Timestamp() // Soft delete
+  createdBy String?       @map("created_by") // User ID who created this rule
+  updatedBy String?       @map("updated_by") // User ID who last updated this rule
+  createdAt DateTime      @default(now()) @map("created_at") @db.Timestamp()
+  updatedAt DateTime      @updatedAt @map("updated_at") @db.Timestamp()
+
+  @@index([deletedAt]) // For filtering active rules
+  @@map("points_rules")
+}
+
+enum ProductStatus {
+  ACTIVE
+  INACTIVE
+  DISCONTINUED
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  UNPAID
+  PAID
+  REFUNDED
+  FAILED
+}
+
+enum Role {
+  ADMIN
+  CUSTOMER
+  LEARNER
+  WRITER
+}
+
+// NextAuth models (compatible with NextAuth Prisma Adapter)
+model Account {
+  id                 String  @id @default(cuid())
+  userId             String  @map("user_id")
+  type               String
+  provider           String
+  providerAccountId  String  @map("provider_account_id")
+  refresh_token      String? @map("refresh_token")
+  access_token       String? @map("access_token")
+  expires_at         Int?    @map("expires_at")
+  token_type         String? @map("token_type")
+  scope              String? @map("scope")
+  id_token           String? @map("id_token")
+  session_state      String? @map("session_state")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  user User @relation("UserAccounts", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique @map("session_token")
+  userId       String   @map("user_id")
+  expires      DateTime
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  user         User     @relation("UserSessions", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@unique([identifier, token])
+  @@index([identifier])
+  @@map("verification_tokens")
+}
