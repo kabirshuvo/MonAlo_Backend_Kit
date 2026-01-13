@@ -51,7 +51,7 @@ RBAC, validation, audit logging, and CI-ready developer workflows.
 ## Quick start (developer)
 
 1. Clone the repository.
-2. Copy `.env.example` to `.env.local` and fill values (see `SETUP.md`).
+2. Copy `.env.example` to `.env.local` and fill values (see `docs/SETUP.md`).
 3. Install dependencies and generate the Prisma client:
 
 ```bash
@@ -90,7 +90,7 @@ npm run dev
 
 This repository is licensed under a single-project commercial license. Commercial internal use
 and modification for a single project are permitted. Redistribution, resale, or sublicensing of the
-original repository is prohibited. See `LICENSE.md` for full terms.
+original repository is prohibited. See `docs/LICENSE.md` for full terms.
 
 ## Customizable areas
 
@@ -106,7 +106,7 @@ original repository is prohibited. See `LICENSE.md` for full terms.
 
 ## References
 
-- Setup instructions: `SETUP.md`
-- Architecture notes: `ARCHITECTURE.md`
-- Demo narrative: `DEMO.md`
+- Setup instructions: `docs/SETUP.md`
+- Architecture notes: `docs/ARCHITECTURE.md`
+- Demo narrative: `docs/DEMO.md`
 
